@@ -257,8 +257,10 @@ const generarSemana = (perfil, objetivo) => {
       });
     }
 
-    sesiones = rellenarDiasLibresConZ2(sesiones, perfil.disponibilidad);
-    sesiones = extenderSesionesExistentes(sesiones, perfil.disponibilidad);
+    if (perfil.fatiga <= 3) {
+      sesiones = rellenarDiasLibresConZ2(sesiones, perfil.disponibilidad);
+      sesiones = extenderSesionesExistentes(sesiones, perfil.disponibilidad);
+    }
   }
 
   sesiones = ordenarSesionesPorDia(sesiones);

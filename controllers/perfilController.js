@@ -13,6 +13,7 @@ const crearPerfil = async (req, res) => {
     });
   }
 };
+
 const obtenerPerfiles = async (req, res) => {
   try {
     const perfiles = await PerfilAtleta.find();
@@ -24,6 +25,7 @@ const obtenerPerfiles = async (req, res) => {
     });
   }
 };
+
 const obtenerPerfilPorId = async (req, res) => {
   try {
     const perfil = await PerfilAtleta.findById(req.params.id);
@@ -41,8 +43,35 @@ const obtenerPerfilPorId = async (req, res) => {
     });
   }
 };
+
+const actualizarPerfil = async (req, res) => {
+  try {
+    const perfil = await PerfilAtleta.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+
+    if (!perfil) {
+      return res.status(404).json({
+        mensaje: "Perfil no encontrado",
+      });
+    }
+
+    res.json(perfil);
+  } catch (error) {
+    res.status(500).json({
+      mensaje: error.message,
+    });
+  }
+};
+
 module.exports = {
   crearPerfil,
   obtenerPerfiles,
   obtenerPerfilPorId,
+  actualizarPerfil,
 };

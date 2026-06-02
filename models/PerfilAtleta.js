@@ -66,6 +66,34 @@ const perfilAtletaSchema = new mongoose.Schema(
       },
     },
 
+    fatiga: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 10,
+    },
+
+    motivacion: {
+      type: Number,
+      default: 5,
+      min: 0,
+      max: 10,
+    },
+
+    sueno: {
+      type: Number,
+      default: 5,
+      min: 0,
+      max: 10,
+    },
+
+    estres: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 10,
+    },
+
     estadoActual: {
       type: String,
       default: "Normal",
@@ -73,10 +101,7 @@ const perfilAtletaSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
-module.exports = mongoose.model(
-  "PerfilAtleta",
-  perfilAtletaSchema
-);
+module.exports = mongoose.model("PerfilAtleta", perfilAtletaSchema);
