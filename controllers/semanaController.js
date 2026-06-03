@@ -1,13 +1,20 @@
 const { generarSemana } = require("../services/generadorSemanaService");
+
 const {
   obtenerObjetivoPrincipal,
 } = require("../services/objetivoPrincipalService");
 
 const PerfilAtleta = require("../models/PerfilAtleta");
+
 const Objetivo = require("../models/Objetivo");
+
 const {
   guardarHistorialSemanal,
 } = require("../services/historialSemanalService");
+
+const {
+  generarPerfilDinamicoV2,
+} = require("../services/perfilDinamicoV2Service");
 
 const generarSemanaPrueba = async (req, res) => {
   try {
@@ -38,6 +45,7 @@ const generarSemanaPrueba = async (req, res) => {
     }
 
     const semana = await generarSemana(perfil, objetivoPrincipal);
+    const perfilDinamicoV2 = await generarPerfilDinamicoV2(perfil._id);
     const historial = await guardarHistorialSemanal({
       atletaId: perfil._id,
       fechaInicioSemana: new Date(),
@@ -56,6 +64,7 @@ const generarSemanaPrueba = async (req, res) => {
       objetivoPrincipal,
       semana,
       historial,
+      perfilDinamicoV2,
     });
   } catch (error) {
     res.status(500).json({
