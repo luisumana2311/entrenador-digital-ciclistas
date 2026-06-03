@@ -6,7 +6,8 @@ const conectarDB = require("./config/db");
 const perfilRoutes = require("./routes/perfilRoutes");
 const objetivoRoutes = require("./routes/objetivoRoutes");
 const semanaRoutes = require("./routes/semanaRoutes");
-
+const registroDiarioRoutes = require("./routes/registroDiarioRoutes");
+const historialSemanalRoutes = require("./routes/historialSemanalRoutes");
 dotenv.config();
 
 conectarDB();
@@ -18,6 +19,8 @@ app.use(express.json());
 app.use("/api/perfiles", perfilRoutes);
 app.use("/api/objetivos", objetivoRoutes);
 app.use("/api/semanas", semanaRoutes);
+app.use("/api/registros-diarios", registroDiarioRoutes);
+app.use("/api/historial", historialSemanalRoutes);
 
 app.get("/", (req, res) => {
   res.send("Entrenador Digital para Ciclistas funcionando");
