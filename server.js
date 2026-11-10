@@ -8,7 +8,7 @@ const objetivoRoutes = require("./routes/objetivoRoutes");
 const semanaRoutes = require("./routes/semanaRoutes");
 const registroDiarioRoutes = require("./routes/registroDiarioRoutes");
 const historialSemanalRoutes = require("./routes/historialSemanalRoutes");
-dotenv.config();
+dotenv.config({ quiet: true });
 
 conectarDB();
 

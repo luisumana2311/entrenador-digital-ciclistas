@@ -24,7 +24,7 @@ const generarMensajeEntrenador = (adaptacion, cumplimiento) => {
       mensaje = "Tu estado actual permite mantener el plan programado.";
   }
 
-  if (cumplimiento) {
+  if (cumplimiento && cumplimiento.estado !== "Sin datos") {
     if (cumplimiento.cumplimiento < 60) {
       mensaje += ` Además, tu cumplimiento actual es de ${cumplimiento.cumplimiento}%, por lo que debemos mejorar la adherencia al plan.`;
     } else if (cumplimiento.cumplimiento >= 85) {

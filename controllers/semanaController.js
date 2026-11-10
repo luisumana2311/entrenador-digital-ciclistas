@@ -2,26 +2,26 @@ const { generarSemana } = require("../services/generadorSemanaService");
 const {
   obtenerObjetivoPrincipal,
 } = require("../services/objetivoPrincipalService");
-
-const PerfilAtleta = require("../models/PerfilAtleta");
-const Objetivo = require("../models/Objetivo");
 const {
   guardarHistorialSemanal,
+  obtenerSemanasPrevias,
 } = require("../services/historialSemanalService");
+const PerfilAtleta = require("../models/PerfilAtleta");
+const Objetivo = require("../models/Objetivo");
+const RegistroDiario = require("../models/RegistroDiario");
+const { manejarError } = require("../utils/manejarError");
 
-const generarSemanaPrueba = async (req, res) => {
+// Genera (o regenera) la semana actual del atleta y la guarda en el historial.
+// Llamarlo varias veces en la misma semana actualiza el mismo registro.
+const generarSemanaAtleta = async (req, res) => {
   try {
     const perfil = await PerfilAtleta.findById(req.params.id);
 
     if (!perfil) {
-      return res.status(404).json({
-        mensaje: "Perfil no encontrado",
-      });
+      return res.status(404).json({ mensaje: "Perfil no encontrado" });
     }
 
-    const objetivos = await Objetivo.find({
-      atletaId: perfil._id,
-    });
+    const objetivos = await Objetivo.find({ atletaId: perfil._id });
 
     if (objetivos.length === 0) {
       return res.status(404).json({
@@ -32,15 +32,27 @@ const generarSemanaPrueba = async (req, res) => {
     const objetivoPrincipal = obtenerObjetivoPrincipal(objetivos);
 
     if (!objetivoPrincipal) {
-      return res.status(404).json({
-        mensaje: "No existe un objetivo activo",
-      });
+      return res.status(404).json({ mensaje: "No existe un objetivo activo" });
     }
 
-    const semana = await generarSemana(perfil, objetivoPrincipal);
+    const hoy = new Date();
+
+    const [registros, previas] = await Promise.all([
+      RegistroDiario.find({ atletaId: perfil._id }).sort({ fecha: -1 }),
+      obtenerSemanasPrevias(perfil._id, hoy, 3),
+    ]);
+
+    const semana = generarSemana(perfil, objetivoPrincipal, registros, {
+      fecha: hoy,
+      semanasPrevias: previas.map((h) => ({
+        fechaInicioSemana: h.fechaInicioSemana,
+        sesiones: h.semanaGenerada?.sesiones || [],
+      })),
+    });
+
     const historial = await guardarHistorialSemanal({
       atletaId: perfil._id,
-      fechaInicioSemana: new Date(),
+      fechaInicioSemana: semana.fechaInicioSemana,
       objetivoPrincipal,
       semanaGenerada: semana,
       adaptacion: semana.adaptacion,
@@ -52,18 +64,17 @@ const generarSemanaPrueba = async (req, res) => {
       perfilDinamico: semana.perfilDinamico,
       mensajeEntrenador: semana.mensajeEntrenador,
     });
+
     res.json({
       objetivoPrincipal,
       semana,
       historial,
     });
   } catch (error) {
-    res.status(500).json({
-      mensaje: error.message,
-    });
+    manejarError(res, error, "Error al generar la semana");
   }
 };
 
 module.exports = {
-  generarSemanaPrueba,
+  generarSemanaAtleta,
 };

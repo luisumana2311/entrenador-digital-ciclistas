@@ -1,58 +1,93 @@
-const calcularSemanasHastaObjetivo = (fechaObjetivo) => {
-  const hoy = new Date();
-  const objetivo = new Date(fechaObjetivo);
+const { normalizarTexto } = require("./sesionesUtil");
+const { MS_DIA } = require("../utils/fechas");
 
-  const diferenciaMs = objetivo - hoy;
-  const semanas = Math.ceil(diferenciaMs / (1000 * 60 * 60 * 24 * 7));
+const calcularSemanasHastaObjetivo = (fechaObjetivo, hoy = new Date()) => {
+  const diferenciaMs = new Date(fechaObjetivo) - hoy;
+  const semanas = Math.ceil(diferenciaMs / (MS_DIA * 7));
 
   return semanas > 0 ? semanas : 0;
 };
 
-const calcularVolumenDisponible = (disponibilidad) => {
+const calcularVolumenDisponible = (disponibilidad = {}) => {
   const disponibilidadLimpia = disponibilidad.toObject
     ? disponibilidad.toObject()
     : disponibilidad;
 
   return Object.values(disponibilidadLimpia).reduce(
-    (total, horas) => total + horas * 60,
+    (total, horas) => total + (Number(horas) || 0) * 60,
     0,
   );
 };
 
 const obtenerFactorDisciplina = (disciplina) => {
-  const disciplinaNormalizada = disciplina.toLowerCase();
+  const d = normalizarTexto(disciplina);
 
-  if (disciplinaNormalizada.includes("mtb marathon")) return 0.75;
-  if (disciplinaNormalizada.includes("mtb")) return 0.7;
-  if (disciplinaNormalizada.includes("ruta")) return 0.75;
-  if (disciplinaNormalizada.includes("gravel")) return 0.72;
-  if (disciplinaNormalizada.includes("rodillo")) return 0.6;
+  if (d.includes("mtb marathon")) return 0.75;
+  if (d.includes("xco") || d.includes("mtb")) return 0.7;
+  if (d.includes("ruta")) return 0.75;
+  if (d.includes("gravel")) return 0.72;
+  if (d.includes("rodillo") || d.includes("indoor")) return 0.6;
 
   return 0.65;
 };
 
-const obtenerFactorObjetivo = (semanasHastaObjetivo) => {
-  if (semanasHastaObjetivo > 16) return 0.65; // base
-  if (semanasHastaObjetivo > 8) return 0.75; // construcción
-  if (semanasHastaObjetivo > 3) return 0.8; // específico
-  return 0.55; // descarga / taper
+// Una sola definición de fases para misión, volumen y fondo largo.
+const obtenerFase = (semanasHastaObjetivo) => {
+  if (semanasHastaObjetivo > 16) {
+    return {
+      fase: "Base",
+      mision: "Construir base aeróbica",
+      factorObjetivo: 0.65,
+      factorFondo: 0.85,
+    };
+  }
+
+  if (semanasHastaObjetivo > 8) {
+    return {
+      fase: "Construcción",
+      mision: "Desarrollar resistencia específica",
+      factorObjetivo: 0.75,
+      factorFondo: 1,
+    };
+  }
+
+  if (semanasHastaObjetivo > 3) {
+    return {
+      fase: "Especialización",
+      mision: "Preparación específica para competencia",
+      factorObjetivo: 0.8,
+      factorFondo: 1,
+    };
+  }
+
+  return {
+    fase: "Puesta a punto",
+    mision: "Afinar rendimiento para competencia",
+    factorObjetivo: 0.55,
+    factorFondo: 0.6,
+  };
 };
 
-const calcularVolumenObjetivo = (perfil, objetivoPrincipal) => {
+const calcularVolumenObjetivo = (
+  perfil,
+  objetivoPrincipal,
+  hoy = new Date(),
+) => {
   const volumenDisponible = calcularVolumenDisponible(perfil.disponibilidad);
 
   const semanasHastaObjetivo = calcularSemanasHastaObjetivo(
     objetivoPrincipal.fechaObjetivo,
+    hoy,
   );
 
   const factorDisciplina = obtenerFactorDisciplina(
     objetivoPrincipal.disciplina || perfil.disciplinaPrincipal,
   );
 
-  const factorObjetivo = obtenerFactorObjetivo(semanasHastaObjetivo);
+  const fase = obtenerFase(semanasHastaObjetivo);
 
   const volumenObjetivo = Math.round(
-    volumenDisponible * factorDisciplina * factorObjetivo,
+    volumenDisponible * factorDisciplina * fase.factorObjetivo,
   );
 
   return {
@@ -60,11 +95,15 @@ const calcularVolumenObjetivo = (perfil, objetivoPrincipal) => {
     volumenObjetivo,
     semanasHastaObjetivo,
     factorDisciplina,
-    factorObjetivo,
+    factorObjetivo: fase.factorObjetivo,
+    fase,
   };
 };
 
 module.exports = {
+  calcularSemanasHastaObjetivo,
   calcularVolumenDisponible,
   calcularVolumenObjetivo,
+  obtenerFactorDisciplina,
+  obtenerFase,
 };

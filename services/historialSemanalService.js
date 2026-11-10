@@ -1,5 +1,8 @@
 const HistorialSemanal = require("../models/HistorialSemanal");
+const { inicioDeSemana } = require("../utils/fechas");
 
+// Guarda o reemplaza la semana del atleta. Generar la misma semana varias
+// veces actualiza el mismo documento en vez de crear duplicados.
 const guardarHistorialSemanal = async ({
   atletaId,
   fechaInicioSemana,
@@ -11,41 +14,46 @@ const guardarHistorialSemanal = async ({
   perfilDinamico,
   mensajeEntrenador,
 }) => {
-  const historial = new HistorialSemanal({
-    atletaId,
-    fechaInicioSemana,
-    objetivoPrincipal,
-    semanaGenerada,
-    adaptacion,
-    fatiga,
-    cumplimiento,
-    perfilDinamico,
-    mensajeEntrenador,
-  });
+  const inicio = inicioDeSemana(fechaInicioSemana || new Date());
 
-  await historial.save();
-
-  return historial;
+  return HistorialSemanal.findOneAndUpdate(
+    { atletaId, fechaInicioSemana: inicio },
+    {
+      atletaId,
+      fechaInicioSemana: inicio,
+      objetivoPrincipal,
+      semanaGenerada,
+      adaptacion,
+      fatiga,
+      cumplimiento,
+      perfilDinamico,
+      mensajeEntrenador,
+    },
+    {
+      upsert: true,
+      returnDocument: "after",
+      runValidators: true,
+      setDefaultsOnInsert: true,
+    },
+  );
 };
 
 const obtenerHistorialPorAtleta = async (atletaId) => {
-  const historial = await HistorialSemanal.find({ atletaId }).sort({
-    fechaInicioSemana: -1,
-  });
-
-  return historial;
+  return HistorialSemanal.find({ atletaId }).sort({ fechaInicioSemana: -1 });
 };
 
-const obtenerUltimaSemana = async (atletaId) => {
-  const ultimaSemana = await HistorialSemanal.findOne({ atletaId }).sort({
-    fechaInicioSemana: -1,
-  });
-
-  return ultimaSemana;
+// Semanas anteriores a la indicada, de la más reciente a la más antigua.
+const obtenerSemanasPrevias = async (atletaId, antesDe, limite = 3) => {
+  return HistorialSemanal.find({
+    atletaId,
+    fechaInicioSemana: { $lt: inicioDeSemana(antesDe) },
+  })
+    .sort({ fechaInicioSemana: -1 })
+    .limit(limite);
 };
 
 module.exports = {
   guardarHistorialSemanal,
   obtenerHistorialPorAtleta,
-  obtenerUltimaSemana,
+  obtenerSemanasPrevias,
 };
