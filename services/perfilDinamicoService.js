@@ -58,6 +58,11 @@ const generarPerfilDinamico = (semanas) => {
     }
   });
 
+  // Si todo se cumplió, no hay una sesión que "cueste más".
+  if (peorPorcentaje >= 100) {
+    sesionMenosCumplida = "Ninguna";
+  }
+
   const cumplimientoGeneral = Math.round(
     (totalRealizadas / totalPlanificadas) * 100,
   );

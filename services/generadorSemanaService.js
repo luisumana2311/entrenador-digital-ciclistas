@@ -79,8 +79,9 @@ const sonConsecutivos = (dia1, dia2) => {
   return Math.abs(obtenerIndiceDia(dia1) - obtenerIndiceDia(dia2)) === 1;
 };
 
-const esDiaAnteriorAlFondo = (dia, diaFondo) => {
-  return obtenerIndiceDia(dia) === obtenerIndiceDia(diaFondo) - 1;
+// El día antes y el día después del fondo largo no llevan intensidad.
+const esDiaPegadoAlFondo = (dia, diaFondo) => {
+  return sonConsecutivos(dia, diaFondo);
 };
 
 const diaYaTieneSesion = (sesiones, dia) => {
@@ -122,12 +123,12 @@ const ordenarSesionesPorDia = (sesiones) => {
   );
 };
 
-// Regla 001: VO2 y Umbral nunca en días consecutivos ni el día antes del fondo.
+// Regla 001: VO2 y Umbral nunca en días consecutivos ni pegados al fondo.
 // Si no hay un par válido, se programa solo VO2 en vez de romper la regla.
 const elegirVO2yUmbral = (diasDisponibles, diaFondo) => {
   const candidatos = diasDisponibles
     .map(([dia]) => dia)
-    .filter((dia) => dia !== diaFondo && !esDiaAnteriorAlFondo(dia, diaFondo));
+    .filter((dia) => dia !== diaFondo && !esDiaPegadoAlFondo(dia, diaFondo));
 
   for (let i = 0; i < candidatos.length; i++) {
     for (let j = i + 1; j < candidatos.length; j++) {
@@ -224,7 +225,10 @@ const extenderSesionesExistentes = (sesiones, disponibilidad) => {
       continue;
     }
 
-    sesion.duracion += minutosLibres;
+    // La recuperación se mantiene corta aunque sobre tiempo ese día.
+    if (sesion.tipo !== "Recuperación") {
+      sesion.duracion += minutosLibres;
+    }
   }
 
   return sesiones;
@@ -331,9 +335,26 @@ const generarSemana = (perfil, objetivo, registrosDiarios = [], opciones = {}) =
     );
   }
 
-  sesiones = ordenarSesionesPorDia(
-    aplicarAdaptacion(sesiones, adaptacion.accion),
+  // La adaptación solo cambia lo que falta de la semana. Los días pasados,
+  // y hoy si el atleta ya registró que entrenó, se quedan como estaban.
+  const indiceHoy = (fecha.getDay() + 6) % 7;
+  const yaEntrenoHoy = registrosOrdenados.some(
+    (r) =>
+      r.entrenoRealizado &&
+      new Date(r.fecha).toDateString() === fecha.toDateString(),
   );
+  const esFija = (sesion) => {
+    const indice = obtenerIndiceDia(sesion.dia);
+    return indice < indiceHoy || (indice === indiceHoy && yaEntrenoHoy);
+  };
+
+  sesiones = ordenarSesionesPorDia([
+    ...sesiones.filter(esFija),
+    ...aplicarAdaptacion(
+      sesiones.filter((s) => !esFija(s)),
+      adaptacion.accion,
+    ),
+  ]);
 
   const volumenGenerado = calcularVolumenSemanal(sesiones);
   const utilizacion = calcularUtilizacion(volumenGenerado, volumenDisponible);
@@ -346,8 +367,12 @@ const generarSemana = (perfil, objetivo, registrosDiarios = [], opciones = {}) =
   const registrosDeSemana = (inicio) =>
     registrosOrdenados.filter((r) => estaEnSemana(r.fecha, inicio));
 
+  // Solo cuentan las sesiones que ya debieron hacerse: no se penaliza
+  // un martes por el fondo largo del sábado.
+  const sesionesVencidas = sesiones.filter(esFija);
+
   const cumplimiento = calcularCumplimiento(
-    sesiones,
+    sesionesVencidas,
     registrosDeSemana(fechaInicioSemana),
   );
 
@@ -356,7 +381,7 @@ const generarSemana = (perfil, objetivo, registrosDiarios = [], opciones = {}) =
       sesiones: semana.sesiones || [],
       registros: registrosDeSemana(inicioDeSemana(semana.fechaInicioSemana)),
     })),
-    { sesiones, registros: registrosDeSemana(fechaInicioSemana) },
+    { sesiones: sesionesVencidas, registros: registrosDeSemana(fechaInicioSemana) },
   ]);
 
   const mensajeEntrenador = generarMensajeEntrenador(adaptacion, cumplimiento);
