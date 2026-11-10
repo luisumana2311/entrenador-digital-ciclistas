@@ -28,6 +28,27 @@ MONGO_URI_TEST=mongodb://127.0.0.1:27017/entrenador-test npm test
 GitHub Actions corre todas las pruebas (Node 20 y 22, con MongoDB) en cada PR
 y en cada push a `main`.
 
+## Frontend
+
+La app web está en [`frontend/`](frontend/) (React + Vite). Con el backend
+corriendo en el puerto 4000:
+
+```bash
+cd frontend
+npm install
+npm run dev            # http://localhost:5173
+```
+
+En desarrollo, Vite redirige `/api` al backend, así que no hace falta
+configurar CORS. Para publicarla, `npm run build` genera `frontend/dist/`; si
+la API vive en otro dominio, define `VITE_API_URL` (por ejemplo
+`https://api.midominio.com/api`) antes del build y agrega ese dominio del
+frontend a `CORS_ORIGIN` en el backend.
+
+Pantallas: acceso (login y registro), **Mi semana** (plan, mensaje del
+entrenador e indicadores), **Hoy** (registro diario), **Objetivos**,
+**Historial** y **Perfil** (datos, disponibilidad y borrar cuenta).
+
 ## Autenticación
 
 1. `POST /api/auth/registro` con `{ email, password, nombre, ...datos del perfil }`
@@ -69,10 +90,13 @@ actualiza el mismo registro del historial en lugar de duplicarlo.
    Especialización (>3), Puesta a punto.
 2. **Sesiones clave** (Fondo Largo, VO2, Umbral) con duraciones según la disciplina
    (MTB Marathon, XCO, Ruta, Gravel, Indoor, Mixto). VO2 y Umbral nunca en días
-   consecutivos; el fondo va en el día de mayor disponibilidad.
+   consecutivos ni pegados al fondo, que va en el día de mayor disponibilidad.
+   La recuperación no se alarga para llenar tiempo libre.
 3. **Volumen extra según fatiga** (0-10, calculada del último registro diario):
    baja → rellena con Z2 y extiende sesiones; moderada → Z2 de máximo 60 min;
    alta → solo sesiones esenciales.
 4. **Adaptación** con el último registro: *Reducir carga* quita complementos Z2 y
    recorta 25% lo aeróbico; *Descanso recomendado* elimina VO2/Umbral y recorta 40%.
-5. **Cumplimiento** de la semana actual y **perfil dinámico** de las últimas 4 semanas.
+   Solo cambia los días que faltan: lo ya pasado (y hoy, si ya entrenaste) se respeta.
+5. **Cumplimiento** de las sesiones que ya tocaban esta semana y **perfil
+   dinámico** de las últimas 4 semanas.

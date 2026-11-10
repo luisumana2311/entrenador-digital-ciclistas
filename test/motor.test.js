@@ -70,6 +70,25 @@ test("VO2 y Umbral no quedan en días consecutivos", () => {
   assert.notEqual(Math.abs(dia("VO2") - dia("Umbral")), 1);
 });
 
+test("no hay intensidad el día antes ni el día después del fondo largo", () => {
+  for (const disciplina of ["MTB Marathon", "Ruta", "XCO"]) {
+    const semana = generarSemana(perfilBase(), objetivo(disciplina), [], { fecha: HOY });
+    const fondo = dias.indexOf(semana.sesiones.find((s) => s.tipo === "Fondo Largo").dia);
+
+    semana.sesiones
+      .filter((s) => /VO2|Umbral/.test(s.tipo))
+      .forEach((s) => assert.notEqual(Math.abs(dias.indexOf(s.dia) - fondo), 1, s.dia));
+  }
+});
+
+test("la recuperación no se alarga para llenar el día", () => {
+  const semana = generarSemana(perfilBase(), objetivo("Ruta"), [], { fecha: HOY });
+
+  semana.sesiones
+    .filter((s) => s.tipo === "Recuperación")
+    .forEach((s) => assert.ok(s.duracion <= 60));
+});
+
 test("no programa sesiones en días sin disponibilidad", () => {
   const semana = generarSemana(perfilBase(), objetivo("Ruta"), [], { fecha: HOY });
   assert.ok(!semana.sesiones.some((s) => s.dia === "viernes"));
@@ -80,7 +99,34 @@ test("descanso recomendado elimina VO2 y Umbral aunque estén extendidas con Z2"
   const semana = generarSemana(perfilBase(), objetivo("MTB Marathon"), [malDia], { fecha: HOY });
 
   assert.equal(semana.adaptacion.accion, "Descanso recomendado");
-  assert.ok(!semana.sesiones.some((s) => /VO2|Umbral/.test(s.tipo)));
+  // De hoy (miércoles) en adelante no queda intensidad.
+  const restantes = semana.sesiones.filter((s) => dias.indexOf(s.dia) >= 2);
+  assert.ok(restantes.length > 0);
+  assert.ok(!restantes.some((s) => /VO2|Umbral/.test(s.tipo)));
+});
+
+test("la adaptación no borra días pasados ni la sesión que ya se hizo hoy", () => {
+  // HOY es miércoles; sesiones fijas en un horario sin días libres alrededor.
+  const perfil = perfilBase({
+    disponibilidad: { lunes: 0, martes: 0, miercoles: 2, jueves: 0, viernes: 2, sabado: 5, domingo: 0 },
+  });
+  const plan = generarSemana(perfil, objetivo("Ruta"), [], { fecha: HOY });
+  const sesionHoy = plan.sesiones.find((s) => s.dia === "miercoles");
+  assert.ok(sesionHoy, "debe haber sesión el miércoles");
+
+  const malDiaEntrenado = registro(0, {
+    sueno: 3, energia: 2, estres: 9, dolorMuscular: 9,
+    entrenoRealizado: true,
+    entrenamientoRealizado: sesionHoy.tipo,
+  });
+
+  const semana = generarSemana(perfil, objetivo("Ruta"), [malDiaEntrenado], { fecha: HOY });
+
+  assert.equal(semana.adaptacion.accion, "Descanso recomendado");
+  assert.deepEqual(semana.sesiones.find((s) => s.dia === "miercoles"), sesionHoy);
+  // Lo único que ya tocaba (miércoles) se hizo: 100%, sin contar viernes ni sábado.
+  assert.equal(semana.cumplimiento.cumplimiento, 100);
+  assert.ok(!semana.mensajeEntrenador.includes("adherencia"));
 });
 
 test("reducir carga quita los complementos Z2 y recorta el volumen", () => {
