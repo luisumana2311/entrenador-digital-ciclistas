@@ -53,4 +53,10 @@ const historialSemanalSchema = new mongoose.Schema(
   },
 );
 
+// Una sola semana guardada por atleta (fechaInicioSemana = lunes 00:00).
+historialSemanalSchema.index(
+  { atletaId: 1, fechaInicioSemana: 1 },
+  { unique: true },
+);
+
 module.exports = mongoose.model("HistorialSemanal", historialSemanalSchema);

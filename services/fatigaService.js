@@ -1,3 +1,5 @@
+const { tipoCanonico } = require("./sesionesUtil");
+
 const calcularFatiga = (volumenGenerado, volumenObjetivo, sesiones) => {
   if (volumenObjetivo === 0) {
     return {
@@ -9,7 +11,7 @@ const calcularFatiga = (volumenGenerado, volumenObjetivo, sesiones) => {
   let cargaSesiones = 0;
 
   sesiones.forEach((sesion) => {
-    switch (sesion.tipo) {
+    switch (tipoCanonico(sesion.tipo)) {
       case "Recuperación":
         cargaSesiones += 5;
         break;

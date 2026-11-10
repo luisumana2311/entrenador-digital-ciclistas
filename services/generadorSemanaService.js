@@ -1,11 +1,13 @@
 const { reglasEntrenador } = require("./motorReglasService");
 const { calcularVolumenObjetivo } = require("./volumenSemanalService");
 const { calcularFatiga } = require("./fatigaService");
-const { evaluarAdaptacion } = require("./adaptacionService");
-const RegistroDiario = require("../models/RegistroDiario");
+const { evaluarAdaptacion, aplicarAdaptacion } = require("./adaptacionService");
 const { generarMensajeEntrenador } = require("./mensajeEntrenadorService");
 const { calcularCumplimiento } = require("./cumplimientoService");
 const { generarPerfilDinamico } = require("./perfilDinamicoService");
+const { normalizarTexto, redondear5 } = require("./sesionesUtil");
+const { inicioDeSemana, estaEnSemana } = require("../utils/fechas");
+
 const ordenDias = [
   "lunes",
   "martes",
@@ -16,13 +18,35 @@ const ordenDias = [
   "domingo",
 ];
 
-const limpiarDisponibilidad = (disponibilidad) => {
+// Duración base (minutos) de las sesiones clave por disciplina.
+const PLANTILLAS_DISCIPLINA = {
+  "mtb marathon": { fondo: 270, vo2: 90, umbral: 90 },
+  xco: { fondo: 180, vo2: 90, umbral: 75 },
+  ruta: { fondo: 240, vo2: 90, umbral: 90 },
+  gravel: { fondo: 240, vo2: 90, umbral: 90 },
+  indoor: { fondo: 120, vo2: 75, umbral: 75 },
+  mixto: { fondo: 210, vo2: 90, umbral: 90 },
+};
+
+const obtenerPlantilla = (disciplina) => {
+  const d = normalizarTexto(disciplina);
+
+  if (d.includes("marathon")) return PLANTILLAS_DISCIPLINA["mtb marathon"];
+  if (d.includes("xco") || d.includes("mtb")) return PLANTILLAS_DISCIPLINA.xco;
+  if (d.includes("ruta")) return PLANTILLAS_DISCIPLINA.ruta;
+  if (d.includes("gravel")) return PLANTILLAS_DISCIPLINA.gravel;
+  if (d.includes("indoor") || d.includes("rodillo")) {
+    return PLANTILLAS_DISCIPLINA.indoor;
+  }
+
+  return PLANTILLAS_DISCIPLINA.mixto;
+};
+
+const limpiarDisponibilidad = (disponibilidad = {}) => {
   return disponibilidad.toObject ? disponibilidad.toObject() : disponibilidad;
 };
 
-const obtenerIndiceDia = (dia) => {
-  return ordenDias.indexOf(dia);
-};
+const obtenerIndiceDia = (dia) => ordenDias.indexOf(dia);
 
 const obtenerDiaMasLargo = (disponibilidad) => {
   const disponibilidadLimpia = limpiarDisponibilidad(disponibilidad);
@@ -93,11 +117,13 @@ const calcularUtilizacion = (volumenGenerado, volumenDisponible) => {
 };
 
 const ordenarSesionesPorDia = (sesiones) => {
-  return sesiones.sort(
+  return [...sesiones].sort(
     (a, b) => obtenerIndiceDia(a.dia) - obtenerIndiceDia(b.dia),
   );
 };
 
+// Regla 001: VO2 y Umbral nunca en días consecutivos ni el día antes del fondo.
+// Si no hay un par válido, se programa solo VO2 en vez de romper la regla.
 const elegirVO2yUmbral = (diasDisponibles, diaFondo) => {
   const candidatos = diasDisponibles
     .map(([dia]) => dia)
@@ -115,8 +141,8 @@ const elegirVO2yUmbral = (diasDisponibles, diaFondo) => {
   }
 
   return {
-    diaVO2: "martes",
-    diaUmbral: "jueves",
+    diaVO2: candidatos[0] || null,
+    diaUmbral: null,
   };
 };
 
@@ -133,7 +159,7 @@ const elegirDiaRecuperacion = (diasDisponibles, sesiones) => {
 };
 
 const agregarSesion = (sesiones, disponibilidad, nuevaSesion) => {
-  if (diaYaTieneSesion(sesiones, nuevaSesion.dia)) {
+  if (!nuevaSesion.dia || diaYaTieneSesion(sesiones, nuevaSesion.dia)) {
     return;
   }
 
@@ -142,16 +168,15 @@ const agregarSesion = (sesiones, disponibilidad, nuevaSesion) => {
     nuevaSesion.dia,
   );
 
-  if (nuevaSesion.duracion > minutosDisponibles) {
-    nuevaSesion.duracion = minutosDisponibles;
-  }
+  const duracion = Math.min(nuevaSesion.duracion, minutosDisponibles);
 
-  if (nuevaSesion.duracion > 0) {
-    sesiones.push(nuevaSesion);
+  if (duracion > 0) {
+    sesiones.push({ ...nuevaSesion, duracion });
   }
 };
 
-const rellenarDiasLibresConZ2 = (sesiones, disponibilidad) => {
+// maxMinutos limita la duración de cada Z2 (fatiga moderada).
+const rellenarDiasLibresConZ2 = (sesiones, disponibilidad, maxMinutos) => {
   const diasDisponibles = obtenerDiasDisponibles(disponibilidad);
 
   for (const [dia, horasDisponibles] of diasDisponibles) {
@@ -165,13 +190,14 @@ const rellenarDiasLibresConZ2 = (sesiones, disponibilidad) => {
       sesiones.push({
         dia,
         tipo: "Z2",
-        duracion: minutosDisponibles,
+        duracion: Math.min(minutosDisponibles, maxMinutos),
       });
     }
   }
 
   return sesiones;
 };
+
 const extenderSesionesExistentes = (sesiones, disponibilidad) => {
   for (const dia of ordenDias) {
     const sesion = obtenerSesionPorDia(sesiones, dia);
@@ -180,12 +206,8 @@ const extenderSesionesExistentes = (sesiones, disponibilidad) => {
       continue;
     }
 
-    const minutosDisponibles = obtenerMinutosDisponiblesDia(
-      disponibilidad,
-      dia,
-    );
-
-    const minutosLibres = minutosDisponibles - sesion.duracion;
+    const minutosLibres =
+      obtenerMinutosDisponiblesDia(disponibilidad, dia) - sesion.duracion;
 
     if (minutosLibres <= 0) {
       continue;
@@ -193,14 +215,8 @@ const extenderSesionesExistentes = (sesiones, disponibilidad) => {
 
     if (sesion.tipo === "VO2" || sesion.tipo === "Umbral") {
       sesion.bloques = [
-        {
-          tipo: sesion.tipo,
-          duracion: sesion.duracion,
-        },
-        {
-          tipo: "Z2 Complementario",
-          duracion: minutosLibres,
-        },
+        { tipo: sesion.tipo, duracion: sesion.duracion },
+        { tipo: "Z2 Complementario", duracion: minutosLibres },
       ];
 
       sesion.tipo = `${sesion.tipo} + Z2`;
@@ -208,94 +224,99 @@ const extenderSesionesExistentes = (sesiones, disponibilidad) => {
       continue;
     }
 
-    if (
-      sesion.tipo === "Recuperación" ||
-      sesion.tipo === "Z2" ||
-      sesion.tipo === "Fondo Largo"
-    ) {
-      sesion.duracion += minutosLibres;
-    }
+    sesion.duracion += minutosLibres;
   }
 
   return sesiones;
 };
 
-const generarSemana = async (perfil, objetivo) => {
-  let mision = "";
-  let sesiones = [];
-
-  const datosVolumen = calcularVolumenObjetivo(perfil, objetivo);
-
-  if (objetivo.disciplina === "MTB Marathon") {
-    if (datosVolumen.semanasHastaObjetivo > 20) {
-      mision = "Construir base aeróbica";
-    } else if (datosVolumen.semanasHastaObjetivo > 8) {
-      mision = "Desarrollar resistencia específica";
-    } else if (datosVolumen.semanasHastaObjetivo > 3) {
-      mision = "Preparación específica para competencia";
-    } else {
-      mision = "Afinar rendimiento para competencia";
-    }
-
-    const diaFondo = reglasEntrenador.fondoEnDiaMasLargo
-      ? obtenerDiaMasLargo(perfil.disponibilidad)
-      : "domingo";
-
-    const diasDisponibles = obtenerDiasDisponibles(perfil.disponibilidad);
-
-    const { diaVO2, diaUmbral } = elegirVO2yUmbral(diasDisponibles, diaFondo);
-
-    agregarSesion(sesiones, perfil.disponibilidad, {
-      dia: diaFondo,
-      tipo: "Fondo Largo",
-      duracion: 270,
-    });
-
-    agregarSesion(sesiones, perfil.disponibilidad, {
-      dia: diaVO2,
-      tipo: "VO2",
-      duracion: 90,
-    });
-
-    agregarSesion(sesiones, perfil.disponibilidad, {
-      dia: diaUmbral,
-      tipo: "Umbral",
-      duracion: 90,
-    });
-
-    const diaRecuperacion = elegirDiaRecuperacion(diasDisponibles, sesiones);
-
-    if (diaRecuperacion) {
-      agregarSesion(sesiones, perfil.disponibilidad, {
-        dia: diaRecuperacion,
-        tipo: "Recuperación",
-        duracion: 60,
-      });
-    }
-
-    if (perfil.fatiga <= 3) {
-      sesiones = rellenarDiasLibresConZ2(sesiones, perfil.disponibilidad);
-      sesiones = extenderSesionesExistentes(sesiones, perfil.disponibilidad);
-    }
+// Regla 017: la fatiga subjetiva del perfil (0-10) limita la expansión de volumen.
+const expandirVolumenSegunFatiga = (sesiones, disponibilidad, fatiga = 0) => {
+  if (fatiga <= 3) {
+    rellenarDiasLibresConZ2(sesiones, disponibilidad, Infinity);
+    return extenderSesionesExistentes(sesiones, disponibilidad);
   }
 
-  sesiones = ordenarSesionesPorDia(sesiones);
+  if (fatiga <= 6) {
+    return rellenarDiasLibresConZ2(sesiones, disponibilidad, 60);
+  }
 
-  let volumenGenerado = calcularVolumenSemanal(sesiones);
+  return sesiones;
+};
+
+/**
+ * Genera la semana de entrenamiento. Es una función pura: recibe los datos
+ * ya cargados de la base de datos, así se puede probar sin MongoDB.
+ *
+ * @param perfil              PerfilAtleta
+ * @param objetivo            objetivo principal activo
+ * @param registrosDiarios    registros del atleta (cualquier orden)
+ * @param opciones.fecha      fecha de referencia (por defecto hoy)
+ * @param opciones.semanasPrevias [{ sesiones, fechaInicioSemana }] del historial
+ */
+const generarSemana = (perfil, objetivo, registrosDiarios = [], opciones = {}) => {
+  const fecha = opciones.fecha || new Date();
+  const semanasPrevias = opciones.semanasPrevias || [];
+  const fechaInicioSemana = inicioDeSemana(fecha);
+
+  const datosVolumen = calcularVolumenObjetivo(perfil, objetivo, fecha);
+  const { fase } = datosVolumen;
+  const plantilla = obtenerPlantilla(
+    objetivo.disciplina || perfil.disciplinaPrincipal,
+  );
+
+  let sesiones = [];
+
+  const diaFondo = reglasEntrenador.fondoEnDiaMasLargo
+    ? obtenerDiaMasLargo(perfil.disponibilidad)
+    : "domingo";
+
+  const diasDisponibles = obtenerDiasDisponibles(perfil.disponibilidad);
+  const { diaVO2, diaUmbral } = elegirVO2yUmbral(diasDisponibles, diaFondo);
+
+  agregarSesion(sesiones, perfil.disponibilidad, {
+    dia: diaFondo,
+    tipo: "Fondo Largo",
+    duracion: redondear5(plantilla.fondo * fase.factorFondo),
+  });
+
+  agregarSesion(sesiones, perfil.disponibilidad, {
+    dia: diaVO2,
+    tipo: "VO2",
+    duracion: plantilla.vo2,
+  });
+
+  agregarSesion(sesiones, perfil.disponibilidad, {
+    dia: diaUmbral,
+    tipo: "Umbral",
+    duracion: plantilla.umbral,
+  });
+
+  agregarSesion(sesiones, perfil.disponibilidad, {
+    dia: elegirDiaRecuperacion(diasDisponibles, sesiones),
+    tipo: "Recuperación",
+    duracion: 60,
+  });
+
+  sesiones = expandirVolumenSegunFatiga(
+    sesiones,
+    perfil.disponibilidad,
+    perfil.fatiga,
+  );
+
   const volumenDisponible = calcularTiempoDisponible(perfil.disponibilidad);
-  let utilizacion = calcularUtilizacion(volumenGenerado, volumenDisponible);
-  let datosFatiga = calcularFatiga(
-    volumenGenerado,
+
+  // La adaptación usa el último registro diario y la fatiga del plan sin ajustar.
+  const fatigaInicial = calcularFatiga(
+    calcularVolumenSemanal(sesiones),
     datosVolumen.volumenObjetivo,
     sesiones,
   );
-  const ultimoRegistro = await RegistroDiario.findOne({
-    atletaId: perfil._id,
-  }).sort({ fecha: -1 });
 
-  const registrosDiarios = await RegistroDiario.find({
-    atletaId: perfil._id,
-  }).sort({ fecha: -1 });
+  const registrosOrdenados = [...registrosDiarios].sort(
+    (a, b) => new Date(b.fecha) - new Date(a.fecha),
+  );
+  const ultimoRegistro = registrosOrdenados[0];
 
   let adaptacion = {
     accion: "Sin datos",
@@ -304,30 +325,46 @@ const generarSemana = async (perfil, objetivo) => {
   };
 
   if (ultimoRegistro) {
-    adaptacion = evaluarAdaptacion(ultimoRegistro, datosFatiga.fatigaEstimada);
-  }
-
-  if (adaptacion.accion === "Descanso recomendado") {
-    sesiones = sesiones.filter(
-      (sesion) => sesion.tipo !== "VO2" && sesion.tipo !== "Umbral",
+    adaptacion = evaluarAdaptacion(
+      ultimoRegistro,
+      fatigaInicial.fatigaEstimada,
     );
   }
 
-  volumenGenerado = calcularVolumenSemanal(sesiones);
-  utilizacion = calcularUtilizacion(volumenGenerado, volumenDisponible);
+  sesiones = ordenarSesionesPorDia(
+    aplicarAdaptacion(sesiones, adaptacion.accion),
+  );
 
-  datosFatiga = calcularFatiga(
+  const volumenGenerado = calcularVolumenSemanal(sesiones);
+  const utilizacion = calcularUtilizacion(volumenGenerado, volumenDisponible);
+  const datosFatiga = calcularFatiga(
     volumenGenerado,
     datosVolumen.volumenObjetivo,
     sesiones,
   );
 
-  const cumplimiento = calcularCumplimiento(sesiones, registrosDiarios);
-  const perfilDinamico = generarPerfilDinamico(sesiones, registrosDiarios);
+  const registrosDeSemana = (inicio) =>
+    registrosOrdenados.filter((r) => estaEnSemana(r.fecha, inicio));
+
+  const cumplimiento = calcularCumplimiento(
+    sesiones,
+    registrosDeSemana(fechaInicioSemana),
+  );
+
+  const perfilDinamico = generarPerfilDinamico([
+    ...semanasPrevias.map((semana) => ({
+      sesiones: semana.sesiones || [],
+      registros: registrosDeSemana(inicioDeSemana(semana.fechaInicioSemana)),
+    })),
+    { sesiones, registros: registrosDeSemana(fechaInicioSemana) },
+  ]);
 
   const mensajeEntrenador = generarMensajeEntrenador(adaptacion, cumplimiento);
+
   return {
-    mision,
+    fechaInicioSemana,
+    fase: fase.fase,
+    mision: fase.mision,
     volumenGenerado,
     volumenDisponible,
     volumenObjetivo: datosVolumen.volumenObjetivo,
@@ -347,4 +384,6 @@ const generarSemana = async (perfil, objetivo) => {
 
 module.exports = {
   generarSemana,
+  obtenerPlantilla,
+  elegirVO2yUmbral,
 };

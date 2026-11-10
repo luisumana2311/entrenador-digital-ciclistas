@@ -19,6 +19,7 @@ const objetivoSchema = new mongoose.Schema(
 
         prioridad: {
             type: String,
+            enum: ["Alta", "Media", "Baja"],
             default: "Media",
         },
 
@@ -34,12 +35,14 @@ const objetivoSchema = new mongoose.Schema(
 
         estado: {
             type: String,
+            enum: ["Activo", "Completado", "Cancelado"],
             default: "Activo",
         },
 
         atletaId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "PerfilAtleta",
+            required: true,
         },
     },
     {

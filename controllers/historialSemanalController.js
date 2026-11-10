@@ -1,4 +1,5 @@
 const HistorialSemanal = require("../models/HistorialSemanal");
+const { manejarError } = require("../utils/manejarError");
 
 const {
   guardarHistorialSemanal,
@@ -14,10 +15,7 @@ const obtenerHistorialPorAtleta = async (req, res) => {
 
     res.json(historial);
   } catch (error) {
-    res.status(500).json({
-      mensaje: "Error obteniendo historial semanal",
-      error: error.message,
-    });
+    manejarError(res, error, "Error obteniendo historial semanal");
   }
 };
 
@@ -27,10 +25,7 @@ const crearHistorialSemanal = async (req, res) => {
 
     res.status(201).json(historial);
   } catch (error) {
-    res.status(500).json({
-      mensaje: "Error guardando historial semanal",
-      error: error.message,
-    });
+    manejarError(res, error, "Error guardando historial semanal");
   }
 };
 
