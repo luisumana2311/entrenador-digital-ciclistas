@@ -1,33 +1,23 @@
-const express = require("express");
-const cors = require("cors");
 const dotenv = require("dotenv");
 
-const conectarDB = require("./config/db");
-const perfilRoutes = require("./routes/perfilRoutes");
-const objetivoRoutes = require("./routes/objetivoRoutes");
-const semanaRoutes = require("./routes/semanaRoutes");
-const registroDiarioRoutes = require("./routes/registroDiarioRoutes");
-const historialSemanalRoutes = require("./routes/historialSemanalRoutes");
 dotenv.config({ quiet: true });
+
+const conectarDB = require("./config/db");
+const { crearApp } = require("./app");
+
+const faltantes = ["MONGO_URI", "JWT_SECRET"].filter((v) => !process.env[v]);
+
+if (faltantes.length > 0) {
+  console.error(
+    `Faltan variables de entorno: ${faltantes.join(", ")}. Revisa .env.example.`,
+  );
+  process.exit(1);
+}
 
 conectarDB();
 
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-app.use("/api/perfiles", perfilRoutes);
-app.use("/api/objetivos", objetivoRoutes);
-app.use("/api/semanas", semanaRoutes);
-app.use("/api/registros-diarios", registroDiarioRoutes);
-app.use("/api/historial", historialSemanalRoutes);
-
-app.get("/", (req, res) => {
-  res.send("Entrenador Digital para Ciclistas funcionando");
-});
-
 const PORT = process.env.PORT || 4000;
 
-app.listen(PORT, () => {
+crearApp().listen(PORT, () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
 });

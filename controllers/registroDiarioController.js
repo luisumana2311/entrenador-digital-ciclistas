@@ -1,23 +1,21 @@
 const RegistroDiario = require("../models/RegistroDiario");
-const PerfilAtleta = require("../models/PerfilAtleta");
-const { manejarError, esIdValido } = require("../utils/manejarError");
+const { manejarError } = require("../utils/manejarError");
+const { elegirCampos, CAMPOS_REGISTRO } = require("../utils/campos");
 const {
   sincronizarPerfilConUltimoRegistro,
 } = require("../services/estadoAtletaService");
 
+// Todos los registros pertenecen al atleta autenticado; el atletaId del body se ignora.
+
 const crearRegistroDiario = async (req, res) => {
   try {
-    const { atletaId } = req.body;
+    const atletaId = req.usuario.perfilId;
 
-    if (!atletaId || !esIdValido(atletaId)) {
-      return res.status(400).json({ mensaje: "atletaId es requerido y debe ser válido" });
-    }
+    const nuevoRegistro = await RegistroDiario.create({
+      ...elegirCampos(req.body, CAMPOS_REGISTRO),
+      atletaId,
+    });
 
-    if (!(await PerfilAtleta.exists({ _id: atletaId }))) {
-      return res.status(404).json({ mensaje: "Perfil no encontrado" });
-    }
-
-    const nuevoRegistro = await RegistroDiario.create(req.body);
     await sincronizarPerfilConUltimoRegistro(atletaId);
 
     res.status(201).json(nuevoRegistro);
@@ -26,10 +24,10 @@ const crearRegistroDiario = async (req, res) => {
   }
 };
 
-const obtenerRegistrosPorAtleta = async (req, res) => {
+const obtenerRegistros = async (req, res) => {
   try {
     const registros = await RegistroDiario.find({
-      atletaId: req.params.atletaId,
+      atletaId: req.usuario.perfilId,
     }).sort({ fecha: -1 });
 
     res.json(registros);
@@ -40,11 +38,11 @@ const obtenerRegistrosPorAtleta = async (req, res) => {
 
 const actualizarRegistroDiario = async (req, res) => {
   try {
-    const { atletaId, ...cambios } = req.body;
+    const atletaId = req.usuario.perfilId;
 
-    const registro = await RegistroDiario.findByIdAndUpdate(
-      req.params.id,
-      cambios,
+    const registro = await RegistroDiario.findOneAndUpdate(
+      { _id: req.params.id, atletaId },
+      elegirCampos(req.body, CAMPOS_REGISTRO),
       { returnDocument: "after", runValidators: true },
     );
 
@@ -52,7 +50,7 @@ const actualizarRegistroDiario = async (req, res) => {
       return res.status(404).json({ mensaje: "Registro no encontrado" });
     }
 
-    await sincronizarPerfilConUltimoRegistro(registro.atletaId);
+    await sincronizarPerfilConUltimoRegistro(atletaId);
 
     res.json(registro);
   } catch (error) {
@@ -62,13 +60,18 @@ const actualizarRegistroDiario = async (req, res) => {
 
 const eliminarRegistroDiario = async (req, res) => {
   try {
-    const registro = await RegistroDiario.findByIdAndDelete(req.params.id);
+    const atletaId = req.usuario.perfilId;
+
+    const registro = await RegistroDiario.findOneAndDelete({
+      _id: req.params.id,
+      atletaId,
+    });
 
     if (!registro) {
       return res.status(404).json({ mensaje: "Registro no encontrado" });
     }
 
-    await sincronizarPerfilConUltimoRegistro(registro.atletaId);
+    await sincronizarPerfilConUltimoRegistro(atletaId);
 
     res.json({ mensaje: "Registro eliminado", id: registro._id });
   } catch (error) {
@@ -78,7 +81,7 @@ const eliminarRegistroDiario = async (req, res) => {
 
 module.exports = {
   crearRegistroDiario,
-  obtenerRegistrosPorAtleta,
+  obtenerRegistros,
   actualizarRegistroDiario,
   eliminarRegistroDiario,
 };

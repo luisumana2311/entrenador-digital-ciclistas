@@ -13,26 +13,52 @@ Las reglas del motor están documentadas en [`docs/`](docs/).
 
 ```bash
 npm install
-cp .env.example .env   # y ajustar MONGO_URI si hace falta
+cp .env.example .env   # ajustar MONGO_URI y poner un JWT_SECRET propio
 npm run dev            # o: npm start
 npm test               # pruebas del motor (no necesitan MongoDB)
 ```
+
+Para correr también las pruebas de la API hace falta un MongoDB de pruebas
+(la base indicada se borra al terminar):
+
+```bash
+MONGO_URI_TEST=mongodb://127.0.0.1:27017/entrenador-test npm test
+```
+
+GitHub Actions corre todas las pruebas (Node 20 y 22, con MongoDB) en cada PR
+y en cada push a `main`.
+
+## Autenticación
+
+1. `POST /api/auth/registro` con `{ email, password, nombre, ...datos del perfil }`
+   crea la cuenta y su perfil de atleta, y devuelve un `token`.
+2. `POST /api/auth/login` con `{ email, password }` devuelve un `token` nuevo.
+3. El resto de la API exige el encabezado `Authorization: Bearer <token>`.
+
+Cada usuario solo ve y modifica sus propios datos: el `atletaId` se toma del
+token, nunca del body. Pedir datos de otro atleta devuelve 403 (o 404 para
+objetivos y registros ajenos). Los intentos de registro y login están limitados
+a 20 cada 15 minutos por IP.
 
 ## API
 
 | Método | Ruta | Descripción |
 | --- | --- | --- |
-| POST | `/api/perfiles` | Crear perfil de atleta |
-| GET | `/api/perfiles` · `/api/perfiles/:id` | Listar / obtener perfil |
-| PATCH · DELETE | `/api/perfiles/:id` | Actualizar / eliminar (borra también sus datos) |
-| POST | `/api/objetivos` | Crear objetivo (`atletaId` obligatorio) |
-| GET | `/api/objetivos?atletaId=` | Listar objetivos, opcionalmente de un atleta |
-| PATCH · DELETE | `/api/objetivos/:id` | Actualizar / eliminar objetivo |
-| POST | `/api/registros-diarios` | Registrar cómo se siente el atleta (actualiza la fatiga del perfil) |
-| GET | `/api/registros-diarios/atleta/:atletaId` | Registros del atleta |
-| PATCH · DELETE | `/api/registros-diarios/:id` | Actualizar / eliminar registro |
-| GET | `/api/semanas/atleta/:id` | Generar la semana actual y guardarla en el historial |
-| GET | `/api/historial/:atletaId` | Historial de semanas |
+| POST | `/api/auth/registro` | Crear cuenta y perfil |
+| POST | `/api/auth/login` | Iniciar sesión |
+| GET | `/api/auth/yo` | Usuario y perfil actuales |
+| GET · PATCH · DELETE | `/api/perfiles/yo` | Mi perfil (DELETE borra la cuenta y todos sus datos) |
+| GET · PATCH · DELETE | `/api/perfiles/:id` | Igual, solo con el id propio |
+| POST · GET | `/api/objetivos` | Crear / listar mis objetivos |
+| PATCH · DELETE | `/api/objetivos/:id` | Actualizar / eliminar un objetivo propio |
+| POST · GET | `/api/registros-diarios` | Registrar cómo me siento (actualiza la fatiga) / listar |
+| PATCH · DELETE | `/api/registros-diarios/:id` | Actualizar / eliminar un registro propio |
+| GET | `/api/semanas/actual` | Generar mi semana y guardarla en el historial |
+| GET | `/api/historial` | Mi historial de semanas |
+
+Las rutas anteriores con id (`/api/semanas/atleta/:id`,
+`/api/historial/:atletaId`, `/api/registros-diarios/atleta/:atletaId`) siguen
+funcionando con el id propio.
 
 Generar la semana varias veces dentro de la misma semana (lunes a domingo)
 actualiza el mismo registro del historial en lugar de duplicarlo.
