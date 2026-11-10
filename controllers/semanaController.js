@@ -15,7 +15,7 @@ const { manejarError } = require("../utils/manejarError");
 // Llamarlo varias veces en la misma semana actualiza el mismo registro.
 const generarSemanaAtleta = async (req, res) => {
   try {
-    const perfil = await PerfilAtleta.findById(req.params.id);
+    const perfil = await PerfilAtleta.findById(req.usuario.perfilId);
 
     if (!perfil) {
       return res.status(404).json({ mensaje: "Perfil no encontrado" });

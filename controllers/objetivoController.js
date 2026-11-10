@@ -1,20 +1,15 @@
 const Objetivo = require("../models/Objetivo");
-const PerfilAtleta = require("../models/PerfilAtleta");
-const { manejarError, esIdValido } = require("../utils/manejarError");
+const { manejarError } = require("../utils/manejarError");
+const { elegirCampos, CAMPOS_OBJETIVO } = require("../utils/campos");
+
+// Todos los objetivos pertenecen al atleta autenticado; el atletaId del body se ignora.
 
 const crearObjetivo = async (req, res) => {
   try {
-    const { atletaId } = req.body;
-
-    if (!atletaId || !esIdValido(atletaId)) {
-      return res.status(400).json({ mensaje: "atletaId es requerido y debe ser válido" });
-    }
-
-    if (!(await PerfilAtleta.exists({ _id: atletaId }))) {
-      return res.status(404).json({ mensaje: "Perfil no encontrado" });
-    }
-
-    const objetivo = await Objetivo.create(req.body);
+    const objetivo = await Objetivo.create({
+      ...elegirCampos(req.body, CAMPOS_OBJETIVO),
+      atletaId: req.usuario.perfilId,
+    });
 
     res.status(201).json(objetivo);
   } catch (error) {
@@ -22,16 +17,11 @@ const crearObjetivo = async (req, res) => {
   }
 };
 
-// GET /api/objetivos?atletaId=... filtra por atleta.
 const obtenerObjetivos = async (req, res) => {
   try {
-    const filtro = {};
-
-    if (req.query.atletaId) {
-      filtro.atletaId = req.query.atletaId;
-    }
-
-    const objetivos = await Objetivo.find(filtro).sort({ fechaObjetivo: 1 });
+    const objetivos = await Objetivo.find({
+      atletaId: req.usuario.perfilId,
+    }).sort({ fechaObjetivo: 1 });
 
     res.json(objetivos);
   } catch (error) {
@@ -41,12 +31,11 @@ const obtenerObjetivos = async (req, res) => {
 
 const actualizarObjetivo = async (req, res) => {
   try {
-    const { atletaId, ...cambios } = req.body;
-
-    const objetivo = await Objetivo.findByIdAndUpdate(req.params.id, cambios, {
-      returnDocument: "after",
-      runValidators: true,
-    });
+    const objetivo = await Objetivo.findOneAndUpdate(
+      { _id: req.params.id, atletaId: req.usuario.perfilId },
+      elegirCampos(req.body, CAMPOS_OBJETIVO),
+      { returnDocument: "after", runValidators: true },
+    );
 
     if (!objetivo) {
       return res.status(404).json({ mensaje: "Objetivo no encontrado" });
@@ -60,7 +49,10 @@ const actualizarObjetivo = async (req, res) => {
 
 const eliminarObjetivo = async (req, res) => {
   try {
-    const objetivo = await Objetivo.findByIdAndDelete(req.params.id);
+    const objetivo = await Objetivo.findOneAndDelete({
+      _id: req.params.id,
+      atletaId: req.usuario.perfilId,
+    });
 
     if (!objetivo) {
       return res.status(404).json({ mensaje: "Objetivo no encontrado" });

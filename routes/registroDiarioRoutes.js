@@ -2,15 +2,17 @@ const express = require("express");
 
 const {
   crearRegistroDiario,
-  obtenerRegistrosPorAtleta,
+  obtenerRegistros,
   actualizarRegistroDiario,
   eliminarRegistroDiario,
 } = require("../controllers/registroDiarioController");
+const { soloPropietario } = require("../middleware/auth");
 
 const router = express.Router();
 
 router.post("/", crearRegistroDiario);
-router.get("/atleta/:atletaId", obtenerRegistrosPorAtleta);
+router.get("/", obtenerRegistros);
+router.get("/atleta/:atletaId", soloPropietario("atletaId"), obtenerRegistros);
 router.patch("/:id", actualizarRegistroDiario);
 router.delete("/:id", eliminarRegistroDiario);
 
